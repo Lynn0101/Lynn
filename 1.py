@@ -8,6 +8,8 @@ import re
 
 import requests
 
+import base64
+
 from lxml import etree
 
 from aip import AipFace
@@ -41,31 +43,21 @@ AUTHORIZATION ="oauth c3cef7c66a1843f8b3a9e6a1e3160e20"
 #以下皆无需改动
 
 #每次请求知乎的讨论列表长度，不建议设定太长，注意节操
-
-LIMIT =5
+LIMIT = 5
 
 #这是话题『美女』的 ID，其是『颜值』（20013528）的父话题
-
-SOURCE ="19552207"
-
-#爬虫假装下正常浏览器请求
-
-USER_AGENT ="Mozilla/5.0 (Windows NT 5.1) AppleWebKit/534.55.3 (KHTML, like Gecko) Version/5.1.5 Safari/534.55.3"
+SOURCE = "19552207"
 
 #爬虫假装下正常浏览器请求
-
-REFERER ="https://www.zhihu.com/topic/%s/newest"% SOURCE
-
+USER_AGENT = "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/534.55.3 (KHTML, like Gecko) Version/5.1.5 Safari/534.55.3"
+#爬虫假装下正常浏览器请求
+REFERER = "https://www.zhihu.com/topic/%s/newest" % SOURCE
 #某话题下讨论列表请求 url
-
-BASE_URL ="https://www.zhihu.com/api/v4/topics/%s/feeds/timeline_activity"
-
+BASE_URL = "https://www.zhihu.com/api/v4/topics/%s/feeds/timeline_activity"
 #初始请求 url 附带的请求参数
-
-URL_QUERY ="?include=data%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Danswer%29%5D.target.content%2Crelationship.is_authorized%2Cis_author%2Cvoting%2Cis_thanked%2Cis_nothelp%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Danswer%29%5D.target.is_normal%2Ccomment_count%2Cvoteup_count%2Ccontent%2Crelevant_info%2Cexcerpt.author.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Darticle%29%5D.target.content%2Cvoteup_count%2Ccomment_count%2Cvoting%2Cauthor.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Dpeople%29%5D.target.answer_count%2Carticles_count%2Cgender%2Cfollower_count%2Cis_followed%2Cis_following%2Cbadge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Danswer%29%5D.target.content%2Crelationship.is_authorized%2Cis_author%2Cvoting%2Cis_thanked%2Cis_nothelp%3Bdata%5B%3F%28target.type%3Danswer%29%5D.target.author.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Darticle%29%5D.target.content%2Cauthor.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dquestion%29%5D.target.comment_count&limit="+ str(LIMIT)
+URL_QUERY = "?include=data%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Danswer%29%5D.target.content%2Crelationship.is_authorized%2Cis_author%2Cvoting%2Cis_thanked%2Cis_nothelp%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Danswer%29%5D.target.is_normal%2Ccomment_count%2Cvoteup_count%2Ccontent%2Crelevant_info%2Cexcerpt.author.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Darticle%29%5D.target.content%2Cvoteup_count%2Ccomment_count%2Cvoting%2Cauthor.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target.data%5B%3F%28target.type%3Dpeople%29%5D.target.answer_count%2Carticles_count%2Cgender%2Cfollower_count%2Cis_followed%2Cis_following%2Cbadge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Danswer%29%5D.target.content%2Crelationship.is_authorized%2Cis_author%2Cvoting%2Cis_thanked%2Cis_nothelp%3Bdata%5B%3F%28target.type%3Danswer%29%5D.target.author.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Darticle%29%5D.target.content%2Cauthor.badge%5B%3F%28type%3Dbest_answerer%29%5D.topics%3Bdata%5B%3F%28target.type%3Dquestion%29%5D.target.comment_count&limit=" + str(LIMIT)
 
 #指定 url，获取对应原始内容 / 图片
-
 def fetch_image(url):
     try:
         headers = {
@@ -147,30 +139,60 @@ def get_valid_filename(s):
     s = str(s).strip().replace(' ', '_')
     return re.sub(r'(?u)[^-\w.]', '_', s)
 
+def detect_face(image, token):
+    try:
+        URL = "https://aip.baidubce.com/rest/2.0/face/v3/detect"
+        params = {
+                "access_token": token
+                }
+        data = {
+                "face_field": "age,gender,beauty,qualities",
+                "image_type": "BASE64",
+                "image": base64.b64encode(image)
+                }
+        s = requests.post(URL, params=params, data=data)
+        return s.json()["result"]
+    except Exception as e:
+        print("detect face fail. " + url)
+        raise e
+
+def fetch_auth_token(api_key, secret_key):
+    try:
+        URL = "https://aip.baidubce.com/oauth/2.0/token"
+        params = {
+                "grant_type": "client_credentials",
+                "client_id": api_key,
+                "client_secret": secret_key
+                }
+        s = requests.post(URL, params=params)
+        return s.json()["access_token"]
+    except Exception as e:
+        print("fetch baidu auth token fail. " + url)
+        raise e
+        
+#构造 HTTP 请求版本
 def init_face_detective(app_id, api_key, secret_key):
     client = AipFace(app_id, api_key, secret_key)
-    #人脸检测中，在响应中附带额外的字段。年龄 / 性别 / 颜值 / 质量
-    options = {"face_fields": "age,gender,beauty,qualities"} 
-    
+    # 百度云 V3 版本接口，需要先获取 access token   
+    token = fetch_auth_token(API_KEY, SECRET_KEY)
     def detective(image):
-        r = client.detect(image, options)
+        #r = client.detect(image, options)
+        # 直接使用 HTTP 请求
+        r = detect_face(image, token)
         #如果没有检测到人脸
-        if r["result_num"] == 0:
+        if r is None or r["face_num"] == 0:
             return []
 
         scores = []
-        for face in r["result"]:
+        for face in r["face_list"]:
             #人脸置信度太低
             if face["face_probability"] < 0.6:
-                continue
-            #真实人脸置信度太低
-            if face["qualities"]["type"]["human"] < 0.6:
                 continue
             #颜值低于阈值
             if face["beauty"] < BEAUTY_THRESHOLD:
                 continue
             #性别非女性
-            if face["gender"] != "female":
+            if face["gender"]["type"] != "female":
                 continue
             scores.append(face["beauty"])
 
