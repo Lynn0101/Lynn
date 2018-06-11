@@ -10,17 +10,17 @@ import requests
 
 from lxml import etree
 
-from aip importAipFace
+from aip import AipFace
 
 #百度云 人脸检测 申请信息
 
 #唯一必须填的信息就这三行
 
-APP_ID ="xxxxxxxx"
+APP_ID ="11382478"
 
-API_KEY ="xxxxxxxxxxxxxxxxxxxxxxxx"
+API_KEY ="AuGAW8ThygO8RPEwpu3MwQ6D"
 
-SECRET_KEY ="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+SECRET_KEY ="vpPNIfTiuLXhVQKNRDfZ1ya87LWUCuuR"
 
 # 文件存放目录名，相对于当前目录
 
@@ -67,205 +67,131 @@ URL_QUERY ="?include=data%5B%3F%28target.type%3Dtopic_sticky_module%29%5D.target
 #指定 url，获取对应原始内容 / 图片
 
 def fetch_image(url):
+    try:
+        headers = {
+                "User-Agent": USER_AGENT,
+                "Referer": REFERER,
+                "authorization": AUTHORIZATION
+                }
+        s = requests.get(url, headers=headers)
+    except Exception as e:
+        print("fetch last activities fail. " + url)
+        raise e
 
-try:
-
-headers ={
-
-"User-Agent": USER_AGENT,
-
-"Referer": REFERER,
-
-"authorization": AUTHORIZATION
-
-}
-
-s = requests.get(url, headers=headers)
-
-exceptExceptionas e:
-
-print("fetch last activities fail. "+ url)
-
-raise e
-
-return s.content
+    return s.content
 
 #指定 url，获取对应 JSON 返回 / 话题列表
-
 def fetch_activities(url):
+    try:
+        headers = {
+                "User-Agent": USER_AGENT,
+                "Referer": REFERER,
+                "authorization": AUTHORIZATION
+                }
+        s = requests.get(url, headers=headers)
+    except Exception as e:
+        print("fetch last activities fail. " + url)
+        raise e
 
-try:
-
-headers ={
-
-"User-Agent": USER_AGENT,
-
-"Referer": REFERER,
-
-"authorization": AUTHORIZATION
-
-}
-
-s = requests.get(url, headers=headers)
-
-exceptExceptionas e:
-
-print("fetch last activities fail. "+ url)
-
-raise e
-
-return s.json()
+    return s.json()
 
 #处理返回的话题列表
-
 def process_activities(datums, face_detective):
+    for data in datums["data"]:
 
-for data in datums["data"]:
+        target = data["target"]
+        if "content" not in target or "question" not in target or "author" not in target:
+            continue
 
-target = data["target"]
+        #解析列表中每一个元素的内容
+        html = etree.HTML(target["content"])
 
-if"content"notin target or"question"notin target or"author"notin target:
+        seq = 0
 
-continue
+        #question_url = target["question"]["url"]
+        question_title = target["question"]["title"]
 
-#解析列表中每一个元素的内容
+        author_name = target["author"]["name"]
+        #author_id = target["author"]["url_token"]
 
-html = etree.HTML(target["content"])
+        print("current answer: " + question_title + " author: " + author_name)
 
-seq =0
+        #获取所有图片地址
+        images = html.xpath("//img/@src")
+        for image in images:
+            if not image.startswith("http"):
+                continue
+            s = fetch_image(image)
+            
+            #请求人脸检测服务
+            scores = face_detective(s)
 
-#question_url = target["question"]["url"]
+            for score in scores:
+                filename = ("%d--" % score) + author_name + "--" + question_title + ("--%d" % seq) + ".jpg"
+                filename = re.sub(r'(?u)[^-\w.]', '_', filename)
+                #注意文件名的处理，不同平台的非法字符不一样，这里只做了简单处理，特别是 author_name / question_title 中的内容
+                seq = seq + 1
+                with open(os.path.join(DIR, filename), "wb") as fd:
+                    fd.write(s)
 
-question_title = target["question"]["title"]
+            #人脸检测 免费，但有 QPS 限制
+            time.sleep(2)
 
-author_name = target["author"]["name"]
-
-#author_id = target["author"]["url_token"]
-
-print("current answer: "+ question_title +" author: "+ author_name)
-
-#获取所有图片地址
-
-images = html.xpath("//img/@src")
-
-for image in images:
-
-ifnot image.startswith("http"):
-
-continue
-
-s = fetch_image(image)
-
-#请求人脸检测服务
-
-scores = face_detective(s)
-
-for score in scores: filename =("%d--"% score)+ author_name +"--"+ question_title +("--%d"% seq)+".jpg"
-
-filename = re.sub(r'(?u)[^-w.]','_', filename)
-
-#注意文件名的处理，不同平台的非法字符不一样，这里只做了简单处理，特别是 author_name / question_title 中的内容
-
-seq = seq +1
-
-with open(os.path.join(DIR, filename),"wb")as fd:
-
-fd.write(s)
-
-#人脸检测 免费，但有 QPS 限制
-
-time.sleep(2)
-
-ifnot datums["paging"]["is_end"]:
-
-#获取后续讨论列表的请求 url
-
-return datums["paging"]["next"]
-
-else:
-
-returnNone
+    if not datums["paging"]["is_end"]:
+        #获取后续讨论列表的请求 url
+        return datums["paging"]["next"]
+    else:
+        return None
 
 def get_valid_filename(s):
-
-s = str(s).strip().replace(' ','_')
-
-return re.sub(r'(?u)[^-w.]','_', s)
+    s = str(s).strip().replace(' ', '_')
+    return re.sub(r'(?u)[^-\w.]', '_', s)
 
 def init_face_detective(app_id, api_key, secret_key):
+    client = AipFace(app_id, api_key, secret_key)
+    #人脸检测中，在响应中附带额外的字段。年龄 / 性别 / 颜值 / 质量
+    options = {"face_fields": "age,gender,beauty,qualities"} 
+    
+    def detective(image):
+        r = client.detect(image, options)
+        #如果没有检测到人脸
+        if r["result_num"] == 0:
+            return []
 
-client =AipFace(app_id, api_key, secret_key)
+        scores = []
+        for face in r["result"]:
+            #人脸置信度太低
+            if face["face_probability"] < 0.6:
+                continue
+            #真实人脸置信度太低
+            if face["qualities"]["type"]["human"] < 0.6:
+                continue
+            #颜值低于阈值
+            if face["beauty"] < BEAUTY_THRESHOLD:
+                continue
+            #性别非女性
+            if face["gender"] != "female":
+                continue
+            scores.append(face["beauty"])
 
-#人脸检测中，在响应中附带额外的字段。年龄 / 性别 / 颜值 / 质量
+        return scores
 
-options ={"face_fields":"age,gender,beauty,qualities"}
-
-def detective(image):
-
-r = client.detect(image, options)
-
-#如果没有检测到人脸
-
-if r["result_num"]==0:
-
-return[]
-
-scores =[]
-
-for face in r["result"]:
-
-#人脸置信度太低
-
-if face["face_probability"]<0.6:
-
-continue
-
-#真实人脸置信度太低
-
-if face["qualities"]["type"]["human"]<0.6:
-
-continue
-
-#颜值低于阈值
-
-if face["beauty"]< BEAUTY_THRESHOLD:
-
-continue
-
-#性别非女性
-
-if face["gender"]!="female":
-
-continue
-
-scores.append(face["beauty"])
-
-return scores
-
-return detective
+    return detective
 
 def init_env():
-
-ifnot os.path.exists(DIR):
-
-os.makedirs(DIR)
+    if not os.path.exists(DIR):
+        os.makedirs(DIR)
 
 init_env()
-
 face_detective = init_face_detective(APP_ID, API_KEY, SECRET_KEY)
 
 url = BASE_URL % SOURCE + URL_QUERY
+while url is not None:
+    print("current url: " + url)
+    datums = fetch_activities(url)
+    url = process_activities(datums, face_detective)
+    #注意节操，爬虫休息间隔不要调小
+    time.sleep(5)
 
-while url isnotNone:
-
-print("current url: "+ url)
-
-datums = fetch_activities(url)
-
-url = process_activities(datums, face_detective)
-
-#注意节操，爬虫休息间隔不要调小
-
-time.sleep(5)
 
 # vim: set ts=4 sw=4 sts=4 tw=100 et:
