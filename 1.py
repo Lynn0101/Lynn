@@ -205,7 +205,7 @@ while url is not None:
     print("current url: " + url)
     datums = fetch_activities(url)
     url = process_activities(datums, face_detective)
-    #注意节操，爬虫休息间隔不要调小
+    #爬虫休息间隔
     time.sleep(5)
 
 
